@@ -9,15 +9,24 @@ from pypdf import PdfReader
 import tempfile
 
 # =========================================================================
-# 🔒 1. システム起動（Renderの環境変数から安全にキーを取得）
+# 🚨 【超重要】最新FastAPIとの相性バグを強制破壊するパッチ（最上部に配置）
 # =========================================================================
-print("🔒 システム起動中... (Render本番稼働モード)")
+import gradio_client.utils
+orig_json_schema_to_python_type = gradio_client.utils._json_schema_to_python_type
+def patched_json_schema_to_python_type(schema, defs=None):
+    if isinstance(schema, bool):  # 原因だった「真偽値（bool）」が来たら安全にスルーさせる
+        return "any"
+    return orig_json_schema_to_python_type(schema, defs)
+gradio_client.utils._json_schema_to_python_type = patched_json_schema_to_python_type
 
-# Renderの「Environment Variables」に登録したAPIキーを自動で読み込みます
+# =========================================================================
+# 🔒 2. システム起動
+# =========================================================================
+print("🔒 システム起動中... (Renderプロモード稼働)")
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 
 # =========================================================================
-# ⚙️ 2. メインデータ処理エンジン
+# ⚙️ 3. メインデータ処理エンジン
 # =========================================================================
 def safe_create_csvs(df):
     tmp_dir = tempfile.gettempdir()
@@ -149,7 +158,7 @@ def process_webhook_app(uploaded_file, custom_cols_str):
     return df_result, p1, p2
 
 # =========================================================================
-# 🧱 3. 画面構成
+# 🧱 4. 画面構成
 # =========================================================================
 with gr.Blocks() as demo:
     gr.Markdown("## 🚀 PrintConnect (受発注データ統合システム - 本番版)")
@@ -179,5 +188,8 @@ with gr.Blocks() as demo:
         outputs=[output_table, download_excel, download_system]
     )
 
-# ⚠️ Renderで正常に待ち受けるための最重要設定
-demo.launch(server_name="0.0.0.0", server_port=10000)
+# ⚠️ 自爆する demo.launch() は完全に廃止！
+# 代わりに、Gradioをプロ仕様のFastAPIサーバーに直接埋め込みます
+from fastapi import FastAPI
+init_app = FastAPI()
+app = gr.mount_gradio_app(init_app, demo, path="/")
