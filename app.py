@@ -188,8 +188,13 @@ with gr.Blocks() as demo:
         outputs=[output_table, download_excel, download_system]
     )
 
-# ⚠️ 自爆する demo.launch() は完全に廃止！
-# 代わりに、Gradioをプロ仕様のFastAPIサーバーに直接埋め込みます
+# ⚠️ 自爆する demo.launch() は完全に排除！
+# 代わりに、Gradioをプロ仕様のFastAPIサーバーに直接マウントします
 from fastapi import FastAPI
 init_app = FastAPI()
 app = gr.mount_gradio_app(init_app, demo, path="/")
+
+# Renderが 'python app.py' と叩いてきても、自動でUvicornを爆速起動する自走スイッチ
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=10000)
