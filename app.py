@@ -10,14 +10,25 @@ import tempfile
 from openai import OpenAI
 
 # =========================================================================
-# 🚨 Render特有の「localhost起動確認エラー」だけをスキップする魔法の1行
+# 🚨 1. Render特有の「localhost起動エラー」をスキップする魔法
 # =========================================================================
 gradio.networking.url_ok = lambda *args, **kwargs: True
 
 # =========================================================================
+# 🚨 2. 【復活】500エラー（bool is not iterable）を防ぐ特効薬
+# =========================================================================
+import gradio_client.utils
+orig_json_schema_to_python_type = gradio_client.utils._json_schema_to_python_type
+def patched_json_schema_to_python_type(schema, defs=None):
+    if isinstance(schema, bool):  # ここでエラーの元（bool）を安全にスルーさせます
+        return "any"
+    return orig_json_schema_to_python_type(schema, defs)
+gradio_client.utils._json_schema_to_python_type = patched_json_schema_to_python_type
+
+# =========================================================================
 # 🔒 システム起動
 # =========================================================================
-print("🔒 システム起動中... (最新Gradio5 安定モード)")
+print("🔒 システム起動中... (バグ完全対策版)")
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 
 def safe_create_csvs(df):
