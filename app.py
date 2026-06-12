@@ -1,33 +1,32 @@
 import gradio as gr
-from openai import OpenAI
-import json
-import base64
-import io
+import gradio.networking
 import os
-import pandas as pd
-from pypdf import PdfReader
-import tempfile
 
 # =========================================================================
-# 🚨 【超重要】最新FastAPIとの相性バグを強制破壊するパッチ（最上部に配置）
+# 🛠️ 【最重要】Renderで誤作動するGradioの自爆装置を完全に破壊する特効薬
 # =========================================================================
-import gradio_client.utils
-orig_json_schema_to_python_type = gradio_client.utils._json_schema_to_python_type
-def patched_json_schema_to_python_type(schema, defs=None):
-    if isinstance(schema, bool):  # 原因だった「真偽値（bool）」が来たら安全にスルーさせる
-        return "any"
-    return orig_json_schema_to_python_type(schema, defs)
-gradio_client.utils._json_schema_to_python_type = patched_json_schema_to_python_type
+# 1. 「localhostに接続できない」というRender特有のネットワーク誤作動を強制スルー
+gradio.networking.url_ok = lambda *args, **kwargs: True
+
+# 2. 502やInternal Server Errorの原因だった「壊れたAPIドキュメント自動生成」を完全停止
+gr.Blocks.get_api_info = lambda *args, **kwargs: {}
 
 # =========================================================================
-# 🔒 2. システム起動
+# 🔒 2. システム起動（環境変数から安全にキーを取得）
 # =========================================================================
-print("🔒 システム起動中... (Renderプロモード稼働)")
+print("🔒 システム起動中... (Render最終安定モード)")
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 
 # =========================================================================
 # ⚙️ 3. メインデータ処理エンジン
 # =========================================================================
+import json
+import base64
+import io
+import pandas as pd
+from pypdf import PdfReader
+import tempfile
+
 def safe_create_csvs(df):
     tmp_dir = tempfile.gettempdir()
     p1 = os.path.join(tmp_dir, "1_パソコン閲覧用_UTF8.csv")
@@ -54,7 +53,6 @@ def process_webhook_app(uploaded_file, custom_cols_str):
 
     final_orders = []
 
-    # 📸 画像 / PDF の場合
     if file_ext in ['.jpg', '.jpeg', '.png', '.pdf']:
         client = OpenAI(api_key=OPENAI_API_KEY.strip())
         prompt = f"""
@@ -94,7 +92,6 @@ def process_webhook_app(uploaded_file, custom_cols_str):
         except Exception as e:
             return pd.DataFrame([{"システムメッセージ": f"AI解析エラー: {e}"}]), None, None
 
-    # 📊 Excel / CSV の場合
     else:
         try:
             if file_ext == '.csv':
@@ -160,6 +157,8 @@ def process_webhook_app(uploaded_file, custom_cols_str):
 # =========================================================================
 # 🧱 4. 画面構成
 # =========================================================================
+from openai import OpenAI
+
 with gr.Blocks() as demo:
     gr.Markdown("## 🚀 PrintConnect (受発注データ統合システム - 本番版)")
     
@@ -188,13 +187,6 @@ with gr.Blocks() as demo:
         outputs=[output_table, download_excel, download_system]
     )
 
-# ⚠️ 自爆する demo.launch() は完全に排除！
-# 代わりに、Gradioをプロ仕様のFastAPIサーバーに直接マウントします
-from fastapi import FastAPI
-init_app = FastAPI()
-app = gr.mount_gradio_app(init_app, demo, path="/")
-
-# Renderが 'python app.py' と叩いてきても、自動でUvicornを爆速起動する自走スイッチ
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=10000)
+# 最もシンプルで確実な起動方法に戻します（自爆装置は上部で破壊済）
+gr.close_all()
+demo.launch(server_name="0.0.0.0", server_port=10000)
