@@ -15,21 +15,25 @@ from openai import OpenAI
 gradio.networking.url_ok = lambda *args, **kwargs: True
 
 # =========================================================================
-# 🚨 2. 【復活】500エラー（bool is not iterable）を防ぐ特効薬
+# 🚨 2. 500エラー（bool is not iterable）を防ぐ特効薬
 # =========================================================================
 import gradio_client.utils
 orig_json_schema_to_python_type = gradio_client.utils._json_schema_to_python_type
 def patched_json_schema_to_python_type(schema, defs=None):
-    if isinstance(schema, bool):  # ここでエラーの元（bool）を安全にスルーさせます
+    if isinstance(schema, bool):
         return "any"
     return orig_json_schema_to_python_type(schema, defs)
 gradio_client.utils._json_schema_to_python_type = patched_json_schema_to_python_type
 
 # =========================================================================
-# 🔒 システム起動
+# 🔒 システム起動 ＆ ログイン情報取得
 # =========================================================================
-print("🔒 システム起動中... (バグ完全対策版)")
+print("🔒 システム起動中... (ログイン機能搭載版)")
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+
+# Renderの環境変数からIDとパスワードを取得（設定がない場合は admin / print2026 になります）
+LOGIN_USER = os.environ.get('LOGIN_USER', 'admin')
+LOGIN_PASS = os.environ.get('LOGIN_PASS', 'print2026')
 
 def safe_create_csvs(df):
     tmp_dir = tempfile.gettempdir()
@@ -189,4 +193,5 @@ with gr.Blocks() as demo:
         outputs=[output_table, download_excel, download_system]
     )
 
-demo.launch(server_name="0.0.0.0", server_port=10000)
+# 🔐 最後に「auth」を追加してログイン画面を有効化します
+demo.launch(server_name="0.0.0.0", server_port=10000, auth=(LOGIN_USER, LOGIN_PASS))
