@@ -1,31 +1,24 @@
 import gradio as gr
 import gradio.networking
 import os
-
-# =========================================================================
-# 🛠️ 【最重要】Renderで誤作動するGradioの自爆装置を完全に破壊する特効薬
-# =========================================================================
-# 1. 「localhostに接続できない」というRender特有のネットワーク誤作動を強制スルー
-gradio.networking.url_ok = lambda *args, **kwargs: True
-
-# 2. 502やInternal Server Errorの原因だった「壊れたAPIドキュメント自動生成」を完全停止
-gr.Blocks.get_api_info = lambda *args, **kwargs: {}
-
-# =========================================================================
-# 🔒 2. システム起動（環境変数から安全にキーを取得）
-# =========================================================================
-print("🔒 システム起動中... (Render最終安定モード)")
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
-
-# =========================================================================
-# ⚙️ 3. メインデータ処理エンジン
-# =========================================================================
 import json
 import base64
 import io
 import pandas as pd
 from pypdf import PdfReader
 import tempfile
+from openai import OpenAI
+
+# =========================================================================
+# 🚨 Render特有の「localhost起動確認エラー」だけをスキップする魔法の1行
+# =========================================================================
+gradio.networking.url_ok = lambda *args, **kwargs: True
+
+# =========================================================================
+# 🔒 システム起動
+# =========================================================================
+print("🔒 システム起動中... (最新Gradio5 安定モード)")
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 
 def safe_create_csvs(df):
     tmp_dir = tempfile.gettempdir()
@@ -155,10 +148,8 @@ def process_webhook_app(uploaded_file, custom_cols_str):
     return df_result, p1, p2
 
 # =========================================================================
-# 🧱 4. 画面構成
+# 🧱 画面構成
 # =========================================================================
-from openai import OpenAI
-
 with gr.Blocks() as demo:
     gr.Markdown("## 🚀 PrintConnect (受発注データ統合システム - 本番版)")
     
@@ -187,6 +178,4 @@ with gr.Blocks() as demo:
         outputs=[output_table, download_excel, download_system]
     )
 
-# 最もシンプルで確実な起動方法に戻します（自爆装置は上部で破壊済）
-gr.close_all()
 demo.launch(server_name="0.0.0.0", server_port=10000)
