@@ -28,7 +28,7 @@ gradio_client.utils._json_schema_to_python_type = patched_json_schema_to_python_
 # =========================================================================
 # 🔒 システム起動 ＆ ログイン情報取得
 # =========================================================================
-print("🔒 システム起動中... (複数ファイル＆ログイン機能搭載版)")
+print("🔒 システム起動中... (最高精度AI・複数ファイル対応版)")
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 
 LOGIN_USER = os.environ.get('LOGIN_USER', 'admin')
@@ -43,7 +43,6 @@ def safe_create_csvs(df):
     return p1, p2
 
 def process_webhook_app(uploaded_files, custom_cols_str):
-    # 複数ファイルが前提になるため、空かどうかをチェック
     if not uploaded_files: 
         return pd.DataFrame([{"システムメッセージ": "ファイルが選択されていません。"}]), None, None
     
@@ -54,7 +53,6 @@ def process_webhook_app(uploaded_files, custom_cols_str):
     client = OpenAI(api_key=OPENAI_API_KEY.strip())
     final_orders = []
 
-    # 万が一単一のファイルオブジェクトが来た場合の安全対策
     if not isinstance(uploaded_files, list):
         uploaded_files = [uploaded_files]
 
@@ -62,31 +60,37 @@ def process_webhook_app(uploaded_files, custom_cols_str):
     for uploaded_file in uploaded_files:
         try:
             file_path = uploaded_file if isinstance(uploaded_file, str) else uploaded_file.name
+            file_name = os.path.basename(file_path)
             file_ext = os.path.splitext(file_path)[1].lower()
             with open(file_path, "rb") as f: file_bytes = f.read()
         except Exception as e:
-            # 1つのファイルでエラーが起きても、他のファイルは処理を続行します
+            # エラーを隠さず、結果表に「エラー行」として追加する
+            final_orders.append({"元ファイル名": "読込エラー", "システムメッセージ": f"読込失敗: {e}"})
             continue
 
         # 📸 画像 / PDF の場合
         if file_ext in ['.jpg', '.jpeg', '.png', '.pdf']:
             prompt = f"""
-            あなたはデータ入力担当です。発注書から抽出し、以下のJSONで出力してください。
+            あなたは正確無比なデータ入力のプロフェッショナルです。
+            以下の発注書データから必要な項目を正確に抽出し、指定されたJSONフォーマットで出力してください。
+            抽出できない項目、または記載がない項目は空文字 "" にしてください。
             {{ "data": [ {{ "作品名": "...", "部数": "..." }} ] }}
             【必須の抽出項目キー】: {desired_columns}
             """
             try:
                 if file_ext in ['.jpg', '.jpeg', '.png']:
                     base64_img = base64.b64encode(file_bytes).decode('utf-8')
+                    # 🚀 AIの頭脳を最上位の「gpt-4o」にアップグレード！
                     response = client.chat.completions.create(
-                        model="gpt-4o-mini",
+                        model="gpt-4o",
                         messages=[{"role": "user", "content": [{"type": "text", "text": prompt},{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_img}"}}]}],
                         response_format={ "type": "json_object" }
                     )
                 else:
                     pdf_text = "".join([page.extract_text() + "\n" for page in PdfReader(io.BytesIO(file_bytes)).pages])
+                    # 🚀 AIの頭脳を最上位の「gpt-4o」にアップグレード！
                     response = client.chat.completions.create(
-                        model="gpt-4o-mini", 
+                        model="gpt-4o", 
                         messages=[{"role": "user", "content": f"{prompt}\n\n【データ】:\n{pdf_text}"}], 
                         response_format={ "type": "json_object" }
                     )
@@ -99,13 +103,15 @@ def process_webhook_app(uploaded_files, custom_cols_str):
                 if isinstance(extracted_items, dict): extracted_items = [extracted_items]
 
                 for item in extracted_items:
-                    row_data = {}
+                    # 💡 どのファイルのデータか分かるように一番左に「元ファイル名」を付ける
+                    row_data = {"元ファイル名": file_name}
                     for col in desired_columns:
                         row_data[col] = item.get(col, "")
                     final_orders.append(row_data)
 
             except Exception as e:
-                continue # エラーのファイルはスキップして次へ
+                # エラーを隠さず追加
+                final_orders.append({"元ファイル名": file_name, "システムメッセージ": f"AI解析エラー: {e}"})
 
         # 📊 Excel / CSV の場合
         else:
@@ -147,7 +153,8 @@ def process_webhook_app(uploaded_files, custom_cols_str):
 
                 for _, row in df_file.iterrows():
                     if row.isna().all(): continue
-                    row_data = {}
+                    # 💡 どのファイルのデータか分かるように一番左に「元ファイル名」を付ける
+                    row_data = {"元ファイル名": file_name}
                     has_data = False
                     for target_col in desired_columns:
                         source_col = mapping_dict.get(target_col)
@@ -161,14 +168,19 @@ def process_webhook_app(uploaded_files, custom_cols_str):
                     if has_data: final_orders.append(row_data)
 
             except Exception as e:
-                continue
+                # エラーを隠さず追加
+                final_orders.append({"元ファイル名": file_name, "システムメッセージ": f"ファイル処理エラー: {e}"})
 
-    # 全ファイルのループ終了後、抽出できたデータが1件もなければエラーメッセージ
     if not final_orders:
         return pd.DataFrame([{"システムメッセージ": "データを抽出できませんでした。"}]), None, None
 
     # すべてのファイルから集めたデータを1つの表にする
     df_result = pd.DataFrame(final_orders)
+    
+    # 見た目を綺麗にするため、エラーがない行からは「システムメッセージ」列を消す処理
+    if "システムメッセージ" in df_result.columns and df_result["システムメッセージ"].isna().all():
+        df_result.drop(columns=["システムメッセージ"], inplace=True)
+        
     p1, p2 = safe_create_csvs(df_result)
     return df_result, p1, p2
 
@@ -181,7 +193,6 @@ with gr.Blocks() as demo:
     with gr.Row():
         with gr.Column(scale=1):
             gr.Markdown("### ⚙️ データ入力")
-            # 💡 ここで file_count="multiple" を指定して複数アップロードを有効化！
             file_input = gr.File(label="📄 発注書をドロップ (複数選択可)", file_count="multiple")
             custom_cols_input = gr.Textbox(
                 label="🎛️ 抽出フォーマット", 
